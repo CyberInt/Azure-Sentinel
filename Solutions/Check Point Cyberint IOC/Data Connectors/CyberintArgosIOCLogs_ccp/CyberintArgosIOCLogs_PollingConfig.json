@@ -15,7 +15,7 @@
       "ApiKeyIdentifier": "access_token="
     },
     "request": {
-      "apiEndpoint": "[[concat('https://',parameters('domainname'),'.cyberint.io/ioc/api/v1/feed/daily/get')]",
+      "apiEndpoint": "[[parameters('argosurl')]",
       "rateLimitQPS": 10,
       "queryWindowInMin": 1440,
       "httpMethod": "POST",
