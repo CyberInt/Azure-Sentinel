@@ -1,0 +1,328 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "metadata": {
+        "title": "Cyberint Argos - Inbound Sync (Argos Status Changes → Sentinel)",
+        "description": "Polls Argos for recently modified alerts and writes updated records to the custom Log Analytics table. This catches status changes, closures, and alert updates that the CCP connector (which filters by created_date) misses.",
+        "prerequisites": [
+            "1. Cyberint_Base playbook must be deployed in the same resource group.",
+            "2. The CCP data connector must be deployed (provides DCE and DCR for the custom table).",
+            "3. The Logic App Managed Identity must be granted Monitoring Metrics Publisher role on the DCR."
+        ],
+        "postDeployment": [
+            "1. The ARM template automatically assigns the Monitoring Metrics Publisher role to the Logic App.",
+            "2. Verify the Recurrence trigger is running at the configured interval."
+        ],
+        "lastUpdateTime": "2026-02-17T00:00:00.000Z",
+        "entities": [],
+        "tags": [ "Sync", "Ingestion" ],
+        "support": {
+            "tier": "Partner",
+            "name": "Cyberint",
+            "link": "https://cyberint.com/customer-support/"
+        },
+        "source": {
+            "type": "solution",
+            "name": "Check Point Cyberint Alerts"
+        },
+        "author": {
+            "name": "Cyberint"
+        },
+        "releaseNotes": [
+            {
+                "version": "1.0.0",
+                "title": "Cyberint Argos - Inbound Sync",
+                "notes": [ "Initial version" ]
+            }
+        ]
+    },
+    "parameters": {
+        "PlaybookName": {
+            "type": "string",
+            "defaultValue": "Cyberint_InboundSync",
+            "metadata": {
+                "description": "Name of the Logic App / Playbook"
+            }
+        },
+        "Cyberint_Base_Playbook_Name": {
+            "type": "string",
+            "defaultValue": "Cyberint_Base",
+            "metadata": {
+                "description": "Name of the Cyberint_Base playbook (must be deployed first)"
+            }
+        },
+        "PollingIntervalMinutes": {
+            "type": "int",
+            "defaultValue": 10,
+            "metadata": {
+                "description": "How often to poll Argos for modified alerts (minutes)"
+            }
+        },
+        "DataCollectionEndpoint": {
+            "type": "string",
+            "metadata": {
+                "description": "Data Collection Endpoint URL (from CCP connector deployment)"
+            }
+        },
+        "DataCollectionRuleImmutableId": {
+            "type": "string",
+            "metadata": {
+                "description": "Data Collection Rule immutable ID (from CCP connector deployment)"
+            }
+        }
+    },
+    "variables": {
+        "monitoringMetricsPublisherRoleId": "3913510d-42f4-4e42-8a64-420c390055eb",
+        "streamName": "Custom-argsentdc_CL"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Logic/workflows",
+            "apiVersion": "2019-05-01",
+            "name": "[parameters('PlaybookName')]",
+            "location": "[resourceGroup().location]",
+            "identity": {
+                "type": "SystemAssigned"
+            },
+            "tags": {
+                "hidden-SentinelTemplateName": "Cyberint_InboundSync",
+                "hidden-SentinelTemplateVersion": "1.0"
+            },
+            "properties": {
+                "state": "Enabled",
+                "definition": {
+                    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {
+                        "PollingIntervalMinutes": {
+                            "defaultValue": 10,
+                            "type": "Int"
+                        },
+                        "DataCollectionEndpoint": {
+                            "defaultValue": "",
+                            "type": "String"
+                        },
+                        "DataCollectionRuleImmutableId": {
+                            "defaultValue": "",
+                            "type": "String"
+                        },
+                        "StreamName": {
+                            "defaultValue": "Custom-argsentdc_CL",
+                            "type": "String"
+                        }
+                    },
+                    "triggers": {
+                        "Recurrence": {
+                            "type": "Recurrence",
+                            "recurrence": {
+                                "frequency": "Minute",
+                                "interval": "@parameters('PollingIntervalMinutes')"
+                            }
+                        }
+                    },
+                    "actions": {
+                        "Initialize_variable_-_RecordCount": {
+                            "type": "InitializeVariable",
+                            "inputs": {
+                                "variables": [
+                                    {
+                                        "name": "RecordCount",
+                                        "type": "integer",
+                                        "value": 0
+                                    }
+                                ]
+                            },
+                            "runAfter": {}
+                        },
+                        "Initialize_variable_-_ErrorCount": {
+                            "type": "InitializeVariable",
+                            "inputs": {
+                                "variables": [
+                                    {
+                                        "name": "ErrorCount",
+                                        "type": "integer",
+                                        "value": 0
+                                    }
+                                ]
+                            },
+                            "runAfter": {
+                                "Initialize_variable_-_RecordCount": [ "Succeeded" ]
+                            }
+                        },
+                        "Cyberint_Base": {
+                            "type": "Workflow",
+                            "inputs": {
+                                "host": {
+                                    "triggerName": "manual",
+                                    "workflow": {
+                                        "id": "[concat('/subscriptions/', subscription().subscriptionId, '/resourceGroups/', resourceGroup().name, '/providers/Microsoft.Logic/workflows/', parameters('Cyberint_Base_Playbook_Name'))]"
+                                    }
+                                }
+                            },
+                            "runAfter": {
+                                "Initialize_variable_-_ErrorCount": [ "Succeeded" ]
+                            },
+                            "runtimeConfiguration": {
+                                "secureData": {
+                                    "properties": [ "inputs", "outputs" ]
+                                }
+                            }
+                        },
+                        "Compose_PollWindowStart": {
+                            "type": "Compose",
+                            "inputs": "@div(sub(ticks(addMinutes(utcNow(), mul(-1, parameters('PollingIntervalMinutes')))), ticks('1970-01-01T00:00:00Z')), 10000000)",
+                            "runAfter": {
+                                "Cyberint_Base": [ "Succeeded" ]
+                            }
+                        },
+                        "Compose_PollWindowEnd": {
+                            "type": "Compose",
+                            "inputs": "@div(sub(ticks(utcNow()), ticks('1970-01-01T00:00:00Z')), 10000000)",
+                            "runAfter": {
+                                "Compose_PollWindowStart": [ "Succeeded" ]
+                            }
+                        },
+                        "HTTP_-_Poll_Argos_modified_alerts": {
+                            "type": "Http",
+                            "inputs": {
+                                "method": "POST",
+                                "uri": "@{body('Cyberint_Base')?['ArgosBaseUrl']}",
+                                "headers": {
+                                    "Cookie": "access_token=@{body('Cyberint_Base')?['ArgosApiToken']}",
+                                    "Accept": "application/json",
+                                    "Content-Type": "application/json",
+                                    "User-Agent": "Scuba",
+                                    "X-Integration-Type": "Azure Sentinel",
+                                    "X-Integration-Instance-Name": "InboundSync",
+                                    "X-Integration-Version": "1.0"
+                                },
+                                "body": {
+                                    "filters": {
+                                        "modification_date": {
+                                            "from": "@{outputs('Compose_PollWindowStart')}",
+                                            "to": "@{outputs('Compose_PollWindowEnd')}"
+                                        }
+                                    }
+                                },
+                                "retryPolicy": {
+                                    "type": "exponential",
+                                    "count": 3,
+                                    "interval": "PT10S",
+                                    "maximumInterval": "PT1M",
+                                    "minimumInterval": "PT5S"
+                                }
+                            },
+                            "runAfter": {
+                                "Compose_PollWindowEnd": [ "Succeeded" ]
+                            },
+                            "runtimeConfiguration": {
+                                "secureData": {
+                                    "properties": [ "inputs" ]
+                                }
+                            }
+                        },
+                        "Parse_alerts_response": {
+                            "type": "Compose",
+                            "inputs": "@coalesce(body('HTTP_-_Poll_Argos_modified_alerts')?['alerts'], json('[]'))",
+                            "runAfter": {
+                                "HTTP_-_Poll_Argos_modified_alerts": [ "Succeeded" ]
+                            }
+                        },
+                        "For_each_modified_alert": {
+                            "type": "Foreach",
+                            "foreach": "@outputs('Parse_alerts_response')",
+                            "actions": {
+                                "HTTP_-_Send_to_Data_Collection_Endpoint": {
+                                    "type": "Http",
+                                    "inputs": {
+                                        "method": "POST",
+                                        "uri": "@{parameters('DataCollectionEndpoint')}/dataCollectionRules/@{parameters('DataCollectionRuleImmutableId')}/streams/@{parameters('StreamName')}?api-version=2023-01-01",
+                                        "headers": {
+                                            "Content-Type": "application/json"
+                                        },
+                                        "body": [
+                                            "@items('For_each_modified_alert')"
+                                        ],
+                                        "authentication": {
+                                            "type": "ManagedServiceIdentity",
+                                            "audience": "https://monitor.azure.com"
+                                        },
+                                        "retryPolicy": {
+                                            "type": "exponential",
+                                            "count": 3,
+                                            "interval": "PT5S",
+                                            "maximumInterval": "PT30S",
+                                            "minimumInterval": "PT2S"
+                                        }
+                                    },
+                                    "runAfter": {}
+                                },
+                                "Increment_RecordCount": {
+                                    "type": "IncrementVariable",
+                                    "inputs": {
+                                        "name": "RecordCount",
+                                        "value": 1
+                                    },
+                                    "runAfter": {
+                                        "HTTP_-_Send_to_Data_Collection_Endpoint": [ "Succeeded" ]
+                                    }
+                                },
+                                "Increment_ErrorCount": {
+                                    "type": "IncrementVariable",
+                                    "inputs": {
+                                        "name": "ErrorCount",
+                                        "value": 1
+                                    },
+                                    "runAfter": {
+                                        "HTTP_-_Send_to_Data_Collection_Endpoint": [ "Failed" ]
+                                    }
+                                }
+                            },
+                            "runAfter": {
+                                "Parse_alerts_response": [ "Succeeded" ]
+                            }
+                        }
+                    },
+                    "outputs": {}
+                },
+                "parameters": {
+                    "PollingIntervalMinutes": {
+                        "value": "[parameters('PollingIntervalMinutes')]"
+                    },
+                    "DataCollectionEndpoint": {
+                        "value": "[parameters('DataCollectionEndpoint')]"
+                    },
+                    "DataCollectionRuleImmutableId": {
+                        "value": "[parameters('DataCollectionRuleImmutableId')]"
+                    },
+                    "StreamName": {
+                        "value": "[variables('streamName')]"
+                    }
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2022-04-01",
+            "name": "[guid(resourceGroup().id, parameters('PlaybookName'), variables('monitoringMetricsPublisherRoleId'))]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Logic/workflows', parameters('PlaybookName'))]"
+            ],
+            "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('monitoringMetricsPublisherRoleId'))]",
+                "principalId": "[reference(resourceId('Microsoft.Logic/workflows', parameters('PlaybookName')), '2019-05-01', 'full').identity.principalId]",
+                "principalType": "ServicePrincipal"
+            }
+        }
+    ],
+    "outputs": {
+        "logicAppName": {
+            "type": "string",
+            "value": "[parameters('PlaybookName')]"
+        },
+        "logicAppPrincipalId": {
+            "type": "string",
+            "value": "[reference(resourceId('Microsoft.Logic/workflows', parameters('PlaybookName')), '2019-05-01', 'full').identity.principalId]"
+        }
+    }
+}

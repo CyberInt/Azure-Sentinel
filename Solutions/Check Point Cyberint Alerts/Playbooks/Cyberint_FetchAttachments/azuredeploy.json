@@ -1,0 +1,356 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "metadata": {
+        "title": "Cyberint Argos - Fetch Attachments On-Demand",
+        "description": "On-demand playbook that fetches Argos alert attachments and analysis report for a Sentinel incident, surfacing the results as an incident comment.",
+        "prerequisites": [
+            "1. Cyberint_Base playbook must be deployed in the same resource group.",
+            "2. The Logic App Managed Identity must be granted Microsoft Sentinel Responder role on the resource group."
+        ],
+        "postDeployment": [
+            "1. Grant the Logic App Managed Identity the **Microsoft Sentinel Responder** role.",
+            "2. Analysts can run this playbook from the Sentinel incident Actions menu."
+        ],
+        "lastUpdateTime": "2026-02-17T00:00:00.000Z",
+        "entities": [],
+        "tags": [ "Enrichment", "Response" ],
+        "support": {
+            "tier": "Partner",
+            "name": "Cyberint",
+            "link": "https://cyberint.com/customer-support/"
+        },
+        "source": {
+            "type": "solution",
+            "name": "Check Point Cyberint Alerts"
+        },
+        "author": {
+            "name": "Cyberint"
+        },
+        "releaseNotes": [
+            {
+                "version": "1.0.0",
+                "title": "Cyberint Argos - Fetch Attachments",
+                "notes": [ "Initial version" ]
+            }
+        ]
+    },
+    "parameters": {
+        "PlaybookName": {
+            "type": "string",
+            "defaultValue": "Cyberint_FetchAttachments",
+            "metadata": {
+                "description": "Name of the Logic App / Playbook"
+            }
+        },
+        "Cyberint_Base_Playbook_Name": {
+            "type": "string",
+            "defaultValue": "Cyberint_Base",
+            "metadata": {
+                "description": "Name of the Cyberint_Base playbook (must be deployed first)"
+            }
+        }
+    },
+    "variables": {
+        "AzureSentinelConnectionName": "[concat('azuresentinel-', parameters('PlaybookName'))]"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Web/connections",
+            "apiVersion": "2016-06-01",
+            "name": "[variables('AzureSentinelConnectionName')]",
+            "location": "[resourceGroup().location]",
+            "kind": "V1",
+            "properties": {
+                "displayName": "[variables('AzureSentinelConnectionName')]",
+                "customParameterValues": {},
+                "parameterValueType": "Alternative",
+                "api": {
+                    "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/azuresentinel')]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Logic/workflows",
+            "apiVersion": "2019-05-01",
+            "name": "[parameters('PlaybookName')]",
+            "location": "[resourceGroup().location]",
+            "identity": {
+                "type": "SystemAssigned"
+            },
+            "tags": {
+                "hidden-SentinelTemplateName": "Cyberint_FetchAttachments",
+                "hidden-SentinelTemplateVersion": "1.0"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/connections', variables('AzureSentinelConnectionName'))]"
+            ],
+            "properties": {
+                "state": "Enabled",
+                "definition": {
+                    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {
+                        "$connections": {
+                            "defaultValue": {},
+                            "type": "Object"
+                        }
+                    },
+                    "triggers": {
+                        "Microsoft_Sentinel_incident": {
+                            "type": "ApiConnectionWebhook",
+                            "inputs": {
+                                "host": {
+                                    "connection": {
+                                        "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                                    }
+                                },
+                                "body": {
+                                    "callback_url": "@{listCallbackUrl()}"
+                                },
+                                "path": "/incident-creation"
+                            }
+                        }
+                    },
+                    "actions": {
+                        "Initialize_variable_-_AttachmentResults": {
+                            "type": "InitializeVariable",
+                            "inputs": {
+                                "variables": [
+                                    {
+                                        "name": "AttachmentResults",
+                                        "type": "string",
+                                        "value": ""
+                                    }
+                                ]
+                            },
+                            "runAfter": {}
+                        },
+                        "Initialize_variable_-_AlertRefId": {
+                            "type": "InitializeVariable",
+                            "inputs": {
+                                "variables": [
+                                    {
+                                        "name": "AlertRefId",
+                                        "type": "string",
+                                        "value": ""
+                                    }
+                                ]
+                            },
+                            "runAfter": {
+                                "Initialize_variable_-_AttachmentResults": [ "Succeeded" ]
+                            }
+                        },
+                        "Initialize_variable_-_AnalysisReport": {
+                            "type": "InitializeVariable",
+                            "inputs": {
+                                "variables": [
+                                    {
+                                        "name": "AnalysisReport",
+                                        "type": "string",
+                                        "value": ""
+                                    }
+                                ]
+                            },
+                            "runAfter": {
+                                "Initialize_variable_-_AlertRefId": [ "Succeeded" ]
+                            }
+                        },
+                        "Cyberint_Base": {
+                            "type": "Workflow",
+                            "inputs": {
+                                "host": {
+                                    "triggerName": "manual",
+                                    "workflow": {
+                                        "id": "[concat('/subscriptions/', subscription().subscriptionId, '/resourceGroups/', resourceGroup().name, '/providers/Microsoft.Logic/workflows/', parameters('Cyberint_Base_Playbook_Name'))]"
+                                    }
+                                }
+                            },
+                            "runAfter": {
+                                "Initialize_variable_-_AnalysisReport": [ "Succeeded" ]
+                            },
+                            "runtimeConfiguration": {
+                                "secureData": {
+                                    "properties": [ "inputs", "outputs" ]
+                                }
+                            }
+                        },
+                        "Parse_incident_alerts": {
+                            "type": "Compose",
+                            "inputs": "@triggerBody()?['object']?['properties']?['alerts']",
+                            "runAfter": {
+                                "Cyberint_Base": [ "Succeeded" ]
+                            }
+                        },
+                        "For_each_alert": {
+                            "type": "Foreach",
+                            "foreach": "@outputs('Parse_incident_alerts')",
+                            "actions": {
+                                "Set_AlertRefId": {
+                                    "type": "SetVariable",
+                                    "inputs": {
+                                        "name": "AlertRefId",
+                                        "value": "@{items('For_each_alert')?['properties']?['additionalData']?['Custom Details']?['ref_id']}"
+                                    },
+                                    "runAfter": {}
+                                },
+                                "HTTP_-_Get_alert_details": {
+                                    "type": "Http",
+                                    "inputs": {
+                                        "method": "GET",
+                                        "uri": "@{body('Cyberint_Base')?['ArgosBaseUrl']}/api/v1/alerts/@{variables('AlertRefId')}",
+                                        "headers": {
+                                            "Cookie": "access_token=@{body('Cyberint_Base')?['ArgosApiToken']}",
+                                            "Accept": "application/json"
+                                        }
+                                    },
+                                    "runAfter": {
+                                        "Set_AlertRefId": [ "Succeeded" ]
+                                    },
+                                    "runtimeConfiguration": {
+                                        "secureData": {
+                                            "properties": [ "inputs" ]
+                                        }
+                                    }
+                                },
+                                "Compose_attachments_list": {
+                                    "type": "Compose",
+                                    "inputs": "@coalesce(body('HTTP_-_Get_alert_details')?['attachments'], json('[]'))",
+                                    "runAfter": {
+                                        "HTTP_-_Get_alert_details": [ "Succeeded" ]
+                                    }
+                                },
+                                "For_each_attachment": {
+                                    "type": "Foreach",
+                                    "foreach": "@outputs('Compose_attachments_list')",
+                                    "actions": {
+                                        "HTTP_-_Get_attachment": {
+                                            "type": "Http",
+                                            "inputs": {
+                                                "method": "GET",
+                                                "uri": "@{body('Cyberint_Base')?['ArgosBaseUrl']}/api/v1/alerts/@{variables('AlertRefId')}/attachments/@{items('For_each_attachment')?['id']}",
+                                                "headers": {
+                                                    "Cookie": "access_token=@{body('Cyberint_Base')?['ArgosApiToken']}",
+                                                    "Accept": "application/json"
+                                                }
+                                            },
+                                            "runAfter": {},
+                                            "runtimeConfiguration": {
+                                                "secureData": {
+                                                    "properties": [ "inputs" ]
+                                                }
+                                            }
+                                        },
+                                        "Append_attachment_info": {
+                                            "type": "AppendToStringVariable",
+                                            "inputs": {
+                                                "name": "AttachmentResults",
+                                                "value": "- @{coalesce(items('For_each_attachment')?['name'], 'unnamed')} (type: @{coalesce(items('For_each_attachment')?['content_type'], 'unknown')}, id: @{items('For_each_attachment')?['id']}) — @{if(equals(outputs('HTTP_-_Get_attachment')?['statusCode'], 200), 'fetched', 'failed')}\n"
+                                            },
+                                            "runAfter": {
+                                                "HTTP_-_Get_attachment": [ "Succeeded", "Failed" ]
+                                            }
+                                        }
+                                    },
+                                    "runAfter": {
+                                        "Compose_attachments_list": [ "Succeeded" ]
+                                    }
+                                },
+                                "HTTP_-_Get_analysis_report": {
+                                    "type": "Http",
+                                    "inputs": {
+                                        "method": "GET",
+                                        "uri": "@{body('Cyberint_Base')?['ArgosBaseUrl']}/api/v1/alerts/@{variables('AlertRefId')}/analysis_report",
+                                        "headers": {
+                                            "Cookie": "access_token=@{body('Cyberint_Base')?['ArgosApiToken']}",
+                                            "Accept": "application/json"
+                                        }
+                                    },
+                                    "runAfter": {
+                                        "For_each_attachment": [ "Succeeded", "Failed" ]
+                                    },
+                                    "runtimeConfiguration": {
+                                        "secureData": {
+                                            "properties": [ "inputs" ]
+                                        }
+                                    }
+                                },
+                                "Set_AnalysisReport": {
+                                    "type": "SetVariable",
+                                    "inputs": {
+                                        "name": "AnalysisReport",
+                                        "value": "@{coalesce(string(body('HTTP_-_Get_analysis_report')), 'No analysis report available')}"
+                                    },
+                                    "runAfter": {
+                                        "HTTP_-_Get_analysis_report": [ "Succeeded", "Failed" ]
+                                    }
+                                }
+                            },
+                            "runAfter": {
+                                "Parse_incident_alerts": [ "Succeeded" ]
+                            }
+                        },
+                        "Add_attachments_comment": {
+                            "type": "ApiConnection",
+                            "inputs": {
+                                "host": {
+                                    "connection": {
+                                        "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                                    }
+                                },
+                                "method": "post",
+                                "body": {
+                                    "incidentArmId": "@triggerBody()?['object']?['id']",
+                                    "message": "<p><strong>Cyberint Attachments &amp; Analysis Report:</strong><br><br><strong>Attachments:</strong><br>@{if(equals(variables('AttachmentResults'), ''), 'No attachments found.', variables('AttachmentResults'))}<br><br><strong>Analysis Report:</strong><br>@{variables('AnalysisReport')}</p>"
+                                },
+                                "path": "/Incidents/Comment"
+                            },
+                            "runAfter": {
+                                "For_each_alert": [ "Succeeded", "Failed" ]
+                            }
+                        },
+                        "Update_incident_tags": {
+                            "type": "ApiConnection",
+                            "inputs": {
+                                "host": {
+                                    "connection": {
+                                        "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                                    }
+                                },
+                                "method": "put",
+                                "body": {
+                                    "incidentArmId": "@triggerBody()?['object']?['id']",
+                                    "tagsToAdd": {
+                                        "TagsToAdd": [ "argos-attachments-fetched" ]
+                                    }
+                                },
+                                "path": "/Incidents"
+                            },
+                            "runAfter": {
+                                "Add_attachments_comment": [ "Succeeded" ]
+                            }
+                        }
+                    },
+                    "outputs": {}
+                },
+                "parameters": {
+                    "$connections": {
+                        "value": {
+                            "azuresentinel": {
+                                "connectionId": "[resourceId('Microsoft.Web/connections', variables('AzureSentinelConnectionName'))]",
+                                "connectionName": "[variables('AzureSentinelConnectionName')]",
+                                "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/azuresentinel')]",
+                                "connectionProperties": {
+                                    "authentication": {
+                                        "type": "ManagedServiceIdentity"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ],
+    "outputs": {}
+}
