@@ -252,7 +252,7 @@
                                             "count": 3,
                                             "interval": "PT5S",
                                             "maximumInterval": "PT30S",
-                                            "minimumInterval": "PT2S"
+                                            "minimumInterval": "PT5S"
                                         }
                                     },
                                     "runAfter": {}
