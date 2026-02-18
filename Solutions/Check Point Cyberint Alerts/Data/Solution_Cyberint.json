@@ -9,6 +9,9 @@
   "Workbooks": [
     "Workbooks/CyberintAlertOverview.json"
   ],
+  "Parsers": [
+    "Parsers/CyberintArgosAlerts.yaml"
+  ],
   "Data Connectors": [
     "Data Connectors/CyberintArgosAlertsLogs_ccp/CyberintArgosAlertsLogs_connectorDefinition.json"
   ],
