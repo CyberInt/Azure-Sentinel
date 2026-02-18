@@ -79,7 +79,14 @@
     "workbookId1": "[resourceId('Microsoft.Insights/workbooks', variables('workbookContentId1'))]",
     "workbookTemplateSpecName1": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/',concat(parameters('workspace'),'-wb-',uniquestring(variables('_workbookContentId1'))))]",
     "_workbookContentId1": "[variables('workbookContentId1')]",
-    "_workbookcontentProductId1": "[concat(take(variables('_solutionId'),50),'-','wb','-', uniqueString(concat(variables('_solutionId'),'-','Workbook','-',variables('_workbookContentId1'),'-', variables('workbookVersion1'))))]"
+    "_workbookcontentProductId1": "[concat(take(variables('_solutionId'),50),'-','wb','-', uniqueString(concat(variables('_solutionId'),'-','Workbook','-',variables('_workbookContentId1'),'-', variables('workbookVersion1'))))]",
+    "parserObject1": {
+      "parserVersion1": "1.0.0",
+      "_parserContentId1": "CyberintArgosAlerts",
+      "parserId1": "[resourceId('Microsoft.OperationalInsights/workspaces/savedSearches', parameters('workspace'), 'CyberintArgosAlerts')]",
+      "parserTemplateSpecName1": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/',concat(parameters('workspace'),'-pr-',uniquestring('CyberintArgosAlerts')))]",
+      "_parsercontentProductId1": "[concat(take(variables('_solutionId'),50),'-','pr','-', uniqueString(concat(variables('_solutionId'),'-','Parser','-','CyberintArgosAlerts','-', '1.0.0')))]"
+    }
   },
   "resources": [
     {
@@ -1053,6 +1060,84 @@
       }
     },
     {
+      "type": "Microsoft.OperationalInsights/workspaces/providers/contentTemplates",
+      "apiVersion": "2023-04-01-preview",
+      "name": "[variables('parserObject1').parserTemplateSpecName1]",
+      "location": "[parameters('workspace-location')]",
+      "dependsOn": [
+        "[extensionResourceId(resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspace')), 'Microsoft.SecurityInsights/contentPackages', variables('_solutionId'))]"
+      ],
+      "properties": {
+        "description": "CyberintArgosAlerts Data Parser with template version 3.1.0",
+        "mainTemplate": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "[variables('parserObject1').parserVersion1]",
+          "parameters": {},
+          "variables": {},
+          "resources": [
+            {
+              "type": "Microsoft.OperationalInsights/workspaces/savedSearches",
+              "apiVersion": "2022-10-01",
+              "name": "[concat(parameters('workspace'), '/CyberintArgosAlerts')]",
+              "location": "[parameters('workspace-location')]",
+              "properties": {
+                "eTag": "*",
+                "displayName": "Cyberint Argos Alerts with Metadata",
+                "category": "Microsoft Sentinel Parser",
+                "functionAlias": "CyberintArgosAlerts",
+                "query": "let AlertMetadata =\n    datatable(event_type: string, alert_category: string, alert_subcategory: string)\n    [\n        \"fraudulent_refund_services_targeting_company\", \"fraud\", \"refund_fraud\",\n        \"fraudulent_refund_tutorial_targeting_company\", \"fraud\", \"refund_fraud\",\n        \"carding_services_targeting_company\", \"fraud\", \"carding\",\n        \"carding_tutorial_targeting_company\", \"fraud\", \"carding\",\n        \"company_coupons_offered_for_sale\", \"fraud\", \"coupon_fraud\",\n        \"company_coupons_prematurely_exposed\", \"fraud\", \"coupon_fraud\",\n        \"cashout_services_targeting_company\", \"fraud\", \"money_laundering\",\n        \"cashout_tutorial_targeting_company\", \"fraud\", \"money_laundering\",\n        \"fraudulent_account_temp_phone\", \"fraud\", \"money_laundering\",\n        \"fraudulent_activity_reported_by_company_customer\", \"fraud\", \"victim_report\",\n        \"malicious_insider_engaged_in_fraudulent_activity\", \"fraud\", \"malicious_insider\",\n        \"extortion_scheme_targeting_company\", \"fraud\", \"extortion\",\n        \"extortion_scheme_targeting_company_executive\", \"fraud\", \"extortion\",\n        \"email_phishing_campaign_targeting_company\", \"phishing\", \"phishing_email\",\n        \"phishing_kit_targeting_company\", \"phishing\", \"phishing_kit\",\n        \"active_phishing_website_targeting_company\", \"phishing\", \"phishing_website\",\n        \"lookalike_domain_potentially_targeting_company\", \"phishing\", \"lookalike_domain\",\n        \"lookalike_subdomain_potentially_targeting_company\", \"phishing\", \"lookalike_domain\",\n        \"company_executive_designated_on_target_list\", \"phishing\", \"phishing_target_list\",\n        \"malicious_file_targeting_company_customers\", \"attackware\", \"malicious_file\",\n        \"malicious_file_targeting_company_employees\", \"attackware\", \"malicious_file\",\n        \"malicious_file_employee_machine_infected_by_malware\", \"attackware\", \"malicious_file\",\n        \"potential_scanner_output_published\", \"attackware\", \"reconnaissance\",\n        \"potential_reconnaissance_on_company_domain\", \"attackware\", \"reconnaissance\",\n        \"credential_stuffing_tool_targeting_company\", \"attackware\", \"automated_attack_tools\",\n        \"brute_force_tool_targeting_company\", \"attackware\", \"automated_attack_tools\",\n        \"data_scraping_tool_for_company_application\", \"attackware\", \"automated_attack_tools\",\n        \"vulnerability_scanner_targeting_company\", \"attackware\", \"automated_attack_tools\",\n        \"potential_ddos_attack\", \"attackware\", \"automated_attack_tools\",\n        \"modified_application_potentially_bypassing_company_business_logic\", \"attackware\", \"business_logic_bypass\",\n        \"browser_extension_potentially_bypassing_company_business_logic\", \"attackware\", \"business_logic_bypass\",\n        \"tool_potentially_bypassing_company_business_logic\", \"attackware\", \"business_logic_bypass\",\n        \"company_asset_designated_on_target_list\", \"attackware\", \"target_list\",\n        \"malicious_url_distributed_on_company_social_media_profile\", \"brand\", \"official_social_media_profile\",\n        \"suspicious_social_media_account_targeting_company_customers\", \"brand\", \"official_social_media_profile\",\n        \"social_media_account_impersonating_company\", \"brand\", \"impersonation\",\n        \"social_media_account_impersonating_company_executive\", \"brand\", \"impersonation\",\n        \"brand_abusing_website_impersonating_company\", \"brand\", \"impersonation\",\n        \"mobile_app_impersonating_company\", \"brand\", \"impersonation\",\n        \"company_intellectual_property_used_without_authorization\", \"brand\", \"intellectual_property_infringement\",\n        \"company_product_unauthorized_resale\", \"brand\", \"unauthorized_trading\",\n        \"counterfeit_company_product_offered_for_sale\", \"brand\", \"unauthorized_trading\",\n        \"negative_sentiment_targeting_company\", \"brand\", \"negative_sentiment\",\n        \"mobile_app_distributed_unofficially\", \"brand\", \"negative_sentiment\",\n        \"fake_job_posting_impersonating_company\", \"brand\", \"fake_job_posting\",\n        \"fake_job_posting_impersonating_company_employee\", \"brand\", \"fake_job_posting\",\n        \"company_website_defaced\", \"brand\", \"defacement\",\n        \"company_social_media_profile_defaced\", \"brand\", \"defacement\",\n        \"company_executive_pii_exposed\", \"data\", \"compromised_pii\",\n        \"company_executive_pii_offered_for_sale\", \"data\", \"compromised_pii\",\n        \"pii_for_multiple_company_customers_exposed\", \"data\", \"compromised_pii\",\n        \"pii_for_multiple_company_customers_offered_for_sale\", \"data\", \"compromised_pii\",\n        \"company_employee_private_access_token_exposed\", \"data\", \"compromised_access_token\",\n        \"company_source_code_exposed\", \"data\", \"internal_information_disclosure\",\n        \"company_internal_email_correspondence_exposed\", \"data\", \"internal_information_disclosure\",\n        \"company_confidential_file_exposed\", \"data\", \"internal_information_disclosure\",\n        \"company_confidential_file_offered_for_sale\", \"data\", \"internal_information_disclosure\",\n        \"breached_data_potentially_related_to_company\", \"data\", \"internal_information_disclosure\",\n        \"malicious_insider_disclosing_company_internal_information\", \"data\", \"malicious_insider\",\n        \"malicious_insider_enabling_access_to_company_internal_information\", \"data\", \"malicious_insider\",\n        \"company_customer_payment_cards_exposed\", \"data\", \"compromised_payment_cards\",\n        \"company_customer_payment_cards_offered_for_sale\", \"data\", \"compromised_payment_cards\",\n        \"company_employee_payment_cards_exposed\", \"data\", \"compromised_payment_cards\",\n        \"company_generated_credit_cards_detected\", \"data\", \"compromised_payment_cards\",\n        \"company_employee_corporate_credentials_exposed\", \"data\", \"compromised_employee_credentials\",\n        \"company_employee_third_party_credentials_exposed\", \"data\", \"compromised_employee_credentials\",\n        \"company_employee_credentials_offered_for_sale\", \"data\", \"compromised_employee_credentials\",\n        \"company_customer_credentials_exposed\", \"data\", \"compromised_customer_credentials\",\n        \"company_customer_credentials_offered_for_sale\", \"data\", \"compromised_customer_credentials\",\n        \"company_customer_credentials_and_pii_exposed\", \"data\", \"compromised_customer_credentials\",\n        \"ransomware_attack_targeting_company\", \"data\", \"ransomware\",\n        \"company_domain_ssl_tls_issue_detected\", \"vulnerabilities\", \"ssl_tls\",\n        \"ssl_tls_certificate_expiry\", \"vulnerabilities\", \"ssl_tls\",\n        \"tls_no_forward_secrecy\", \"vulnerabilities\", \"ssl_tls\",\n        \"tls_latest_version_not_supported\", \"vulnerabilities\", \"ssl_tls\",\n        \"tls_outdated_version_ssl_tls_supported\", \"vulnerabilities\", \"ssl_tls\",\n        \"tls_server_has_known_vulnerability\", \"vulnerabilities\", \"ssl_tls\",\n        \"tls_insecure_cipher_suites\", \"vulnerabilities\", \"ssl_tls\",\n        \"tls_weak_cipher_suites\", \"vulnerabilities\", \"ssl_tls\",\n        \"tls_server_accepts_insecure_renegotiation\", \"vulnerabilities\", \"ssl_tls\",\n        \"exposed_company_web_interface\", \"vulnerabilities\", \"exposed_web_interfaces\",\n        \"exposed_directory_listing\", \"vulnerabilities\", \"exposed_web_interfaces\",\n        \"company_subdomain_vulnerable_to_hijacking\", \"vulnerabilities\", \"hijackable_subdomains\",\n        \"potentially_exploitable_web_application_vulnerability_detected\", \"vulnerabilities\", \"website_vulnerabilities\",\n        \"web_application_vulnerability_exploit_published\", \"vulnerabilities\", \"website_vulnerabilities\",\n        \"exposed_company_cloud_storage_bucket_detected\", \"vulnerabilities\", \"exposed_cloud_storage\",\n        \"exploitable_port_on_company_server_detected\", \"vulnerabilities\", \"exploitable_ports\",\n        \"company_mail_server_blacklisted\", \"vulnerabilities\", \"mail_servers_in_blacklist\",\n        \"company_server_identified_as_connected_to_botnet\", \"vulnerabilities\", \"server_connected_to_botnet\",\n        \"missing_company_domain_dmarc_records_detected\", \"vulnerabilities\", \"email_security_issues\",\n        \"misconfigured_company_domain_dmarc_records_detected\", \"vulnerabilities\", \"email_security_issues\",\n        \"missing_company_domain_spf_records_detected\", \"vulnerabilities\", \"email_security_issues\",\n        \"misconfigured_company_domain_spf_records_detected\", \"vulnerabilities\", \"email_security_issues\",\n        \"missing_company_domain_caa_records_detected\", \"vulnerabilities\", \"certificate_authority_issues\",\n        \"misconfigured_company_domain_caa_records_detected\", \"vulnerabilities\", \"certificate_authority_issues\",\n        \"vulnerable_technology_detected_on_exposed_company_asset\", \"vulnerabilities\", \"vulnerabilities\",\n        \"vulnerable_technology_detected_on_manually_added_technology\", \"vulnerabilities\", \"vulnerabilities\",\n        \"exploitable_vulnerability_found_on_company_asset\", \"vulnerabilities\", \"vulnerabilities\",\n        \"exploit_found_on_company_asset\", \"vulnerabilities\", \"vulnerabilities\",\n        \"web_app_security_missing_hsts_header_detected\", \"vulnerabilities\", \"web_app_security\",\n        \"web_app_security_misconfigured_hsts_header_detected\", \"vulnerabilities\", \"web_app_security\",\n        \"web_app_security_missing_x_frame_options_header_detected\", \"vulnerabilities\", \"web_app_security\",\n        \"web_app_security_misconfigured_x_frame_options_header_detected\", \"vulnerabilities\", \"web_app_security\",\n        \"web_app_security_missing_x_content_type_options_header_detected\", \"vulnerabilities\", \"web_app_security\",\n        \"web_app_security_misconfigured_x_content_type_options_header_detected\", \"vulnerabilities\", \"web_app_security\",\n        \"web_app_security_missing_content_security_policy_header_detected\", \"vulnerabilities\", \"web_app_security\",\n        \"web_app_security_missing_referrer_policy_header_detected\", \"vulnerabilities\", \"web_app_security\",\n        \"web_app_security_missing_x_permitted_cross_domain_policies_header_detected\", \"vulnerabilities\", \"web_app_security\",\n        \"third_party_vendor_breached\", \"supply_chain\", \"vendor_incident\",\n        \"ransomware_attack_targeting_third_party_vendor\", \"supply_chain\", \"vendor_incident\",\n        \"other\", \"other\", \"other\",\n        \"user_defined_saved_query_hit\", \"other\", \"user_defined_saved_query\"\n    ];\nargsentdc_CL\n| lookup kind=leftouter AlertMetadata on event_type\n| extend\n    alert_category = coalesce(alert_category, category, \"unknown\"),\n    alert_subcategory = coalesce(alert_subcategory, \"unknown\")",
+                "functionParameters": "",
+                "version": 2,
+                "tags": [
+                  {
+                    "name": "createdBy",
+                    "value": "Cyberint"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.OperationalInsights/workspaces/providers/metadata",
+              "apiVersion": "2022-01-01-preview",
+              "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/',concat('Parser-', last(split(variables('parserObject1').parserId1,'/'))))]",
+              "properties": {
+                "description": "Cyberint Argos Alerts parser enriches argsentdc_CL with alert_category and alert_subcategory from the Argos metadata taxonomy",
+                "parentId": "[variables('parserObject1').parserId1]",
+                "contentId": "[variables('parserObject1')._parserContentId1]",
+                "kind": "Parser",
+                "version": "[variables('parserObject1').parserVersion1]",
+                "source": {
+                  "kind": "Solution",
+                  "name": "[variables('_solutionName')]",
+                  "sourceId": "[variables('_solutionId')]"
+                },
+                "author": {
+                  "name": "Cyberint",
+                  "email": "[variables('_email')]"
+                },
+                "support": {
+                  "name": "Cyberint",
+                  "tier": "Partner",
+                  "link": "https://cyberint.com/customer-support/"
+                }
+              }
+            }
+          ]
+        },
+        "packageKind": "Solution",
+        "packageVersion": "[variables('_solutionVersion')]",
+        "packageName": "[variables('_solutionName')]",
+        "packageId": "[variables('_solutionId')]",
+        "contentSchemaVersion": "3.0.0",
+        "contentId": "[variables('parserObject1')._parserContentId1]",
+        "contentKind": "Parser",
+        "displayName": "Cyberint Argos Alerts with Metadata",
+        "contentProductId": "[variables('parserObject1')._parsercontentProductId1]",
+        "id": "[variables('parserObject1')._parsercontentProductId1]",
+        "version": "[variables('parserObject1').parserVersion1]"
+      }
+    },
+    {
       "type": "Microsoft.OperationalInsights/workspaces/providers/contentPackages",
       "apiVersion": "2023-04-01-preview",
       "location": "[parameters('workspace-location')]",
@@ -1062,7 +1147,7 @@
         "contentSchemaVersion": "3.0.0",
         "displayName": "Check Point Cyberint Alerts",
         "publisherDisplayName": "Cyberint",
-        "descriptionHtml": "<p><strong>Note:</strong> Please refer to the following before installing the solution:</p>\n<p>\u2022 Review the solution <a href=\"https://github.com/Azure/Azure-Sentinel/tree/master/Solutions/Check%20Point%20Cyberint%20Alerts/ReleaseNotes.md\">Release Notes</a></p>\n<p>\u2022 There may be <a href=\"https://aka.ms/sentinelsolutionsknownissues\">known issues</a> pertaining to this Solution, please refer to them before installing.</p>\n<p>Cyberint, a Check Point company, provides Microsoft Sentinel integration to streamline critical Alerts and bring enriched threat intelligence from the Infinity External Risk Management solution into Microsoft Sentinel. This simplifies the process of tracking the status of tickets with automatic sync updates across systems. Using this new integration for Microsoft Sentinel, existing Cyberint and Microsoft Sentinel customers can easily pull logs based on Cyberint's findings into Microsoft Sentinel platform.<p><span style='color:red; font-weight:bold;'>NOTE</span>: Microsoft recommends installation of Check Point Cyberint Alerts Connector (via Codeless Connector Platform). This connector is build on the Codeless Connector Platform (CCP), which uses the Log Ingestion API, which replaces ingestion via the <a href='https://learn.microsoft.com/en-us/azure/azure-monitor/logs/custom-logs-migrate' style='color:#1890F1;'>deprecated HTTP Data Collector API</a>. CCP-based data connectors also support <a href='https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/data-collection-rule-overview' style='color:#1890F1;'>Data Collection Rules</a> (DCRs) offering transformations and enrichment.</p></p>\n<p><strong>Data Connectors:</strong> 1, <strong>Workbooks:</strong> 1, <strong>Analytic Rules:</strong> 1</p>\n<p><a href=\"https://aka.ms/azuresentinel\">Learn more about Microsoft Sentinel</a> | <a href=\"https://aka.ms/azuresentinelsolutionsdoc\">Learn more about Solutions</a></p>\n",
+        "descriptionHtml": "<p><strong>Note:</strong> Please refer to the following before installing the solution:</p>\n<p>\u2022 Review the solution <a href=\"https://github.com/Azure/Azure-Sentinel/tree/master/Solutions/Check%20Point%20Cyberint%20Alerts/ReleaseNotes.md\">Release Notes</a></p>\n<p>\u2022 There may be <a href=\"https://aka.ms/sentinelsolutionsknownissues\">known issues</a> pertaining to this Solution, please refer to them before installing.</p>\n<p>Cyberint, a Check Point company, provides Microsoft Sentinel integration to streamline critical Alerts and bring enriched threat intelligence from the Infinity External Risk Management solution into Microsoft Sentinel. This simplifies the process of tracking the status of tickets with automatic sync updates across systems. Using this new integration for Microsoft Sentinel, existing Cyberint and Microsoft Sentinel customers can easily pull logs based on Cyberint's findings into Microsoft Sentinel platform.<p><span style='color:red; font-weight:bold;'>NOTE</span>: Microsoft recommends installation of Check Point Cyberint Alerts Connector (via Codeless Connector Platform). This connector is build on the Codeless Connector Platform (CCP), which uses the Log Ingestion API, which replaces ingestion via the <a href='https://learn.microsoft.com/en-us/azure/azure-monitor/logs/custom-logs-migrate' style='color:#1890F1;'>deprecated HTTP Data Collector API</a>. CCP-based data connectors also support <a href='https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/data-collection-rule-overview' style='color:#1890F1;'>Data Collection Rules</a> (DCRs) offering transformations and enrichment.</p></p>\n<p><strong>Data Connectors:</strong> 1, <strong>Workbooks:</strong> 1, <strong>Analytic Rules:</strong> 1, <strong>Parsers:</strong> 1</p>\n<p><a href=\"https://aka.ms/azuresentinel\">Learn more about Microsoft Sentinel</a> | <a href=\"https://aka.ms/azuresentinelsolutionsdoc\">Learn more about Solutions</a></p>\n",
         "contentKind": "Solution",
         "contentProductId": "[variables('_solutioncontentProductId')]",
         "id": "[variables('_solutioncontentProductId')]",
@@ -1100,6 +1185,11 @@
               "kind": "Workbook",
               "contentId": "[variables('_workbookContentId1')]",
               "version": "[variables('workbookVersion1')]"
+            },
+            {
+              "kind": "Parser",
+              "contentId": "[variables('parserObject1')._parserContentId1]",
+              "version": "[variables('parserObject1').parserVersion1]"
             }
           ]
         },
