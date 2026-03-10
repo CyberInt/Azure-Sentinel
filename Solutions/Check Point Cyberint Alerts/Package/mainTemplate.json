@@ -41,13 +41,21 @@
       "metadata": {
         "description": "subscription id where Microsoft Sentinel is setup"
       }
+    },
+    "workbook1-name": {
+      "type": "string",
+      "defaultValue": "Cyberint Argos - Alert Overview & Sync Health",
+      "minLength": 1,
+      "metadata": {
+        "description": "Name for the workbook"
+      }
     }
   },
   "variables": {
     "email": "support@checkpoint.com",
     "_email": "[variables('email')]",
     "_solutionName": "Check Point Cyberint Alerts",
-    "_solutionVersion": "3.0.1",
+    "_solutionVersion": "3.1.0",
     "solutionId": "checkpoint.checkpoint-cyberint-solutions-alerts",
     "_solutionId": "[variables('solutionId')]",
     "workspaceResourceId": "[resourceId('microsoft.OperationalInsights/Workspaces', parameters('workspace'))]",
@@ -58,7 +66,20 @@
     "dataConnectorTemplateNameConnections1": "[concat(parameters('workspace'),'-dc-',uniquestring(variables('_dataConnectorContentIdConnections1')))]",
     "dataCollectionEndpointId1": "[concat('/subscriptions/',parameters('subscription'),'/resourceGroups/',parameters('resourceGroupName'),'/providers/Microsoft.Insights/dataCollectionEndpoints/',parameters('workspace'))]",
     "blanks": "[replace('b', 'b', '')]",
-    "_solutioncontentProductId": "[concat(take(variables('_solutionId'),50),'-','sl','-', uniqueString(concat(variables('_solutionId'),'-','Solution','-',variables('_solutionId'),'-', variables('_solutionVersion'))))]"
+    "_solutioncontentProductId": "[concat(take(variables('_solutionId'),50),'-','sl','-', uniqueString(concat(variables('_solutionId'),'-','Solution','-',variables('_solutionId'),'-', variables('_solutionVersion'))))]",
+    "analyticRuleObject1": {
+      "analyticRuleVersion1": "1.0.0",
+      "_analyticRulecontentId1": "8d3b9c7e-5a2f-4e1d-b6c8-3f9a7e2d1b4c",
+      "analyticRuleId1": "[resourceId('Microsoft.SecurityInsights/AlertRuleTemplates', '8d3b9c7e-5a2f-4e1d-b6c8-3f9a7e2d1b4c')]",
+      "analyticRuleTemplateSpecName1": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/',concat(parameters('workspace'),'-ar-',uniquestring('8d3b9c7e-5a2f-4e1d-b6c8-3f9a7e2d1b4c')))]",
+      "_analyticRulecontentProductId1": "[concat(take(variables('_solutionId'),50),'-','ar','-', uniqueString(concat(variables('_solutionId'),'-','AnalyticsRule','-','8d3b9c7e-5a2f-4e1d-b6c8-3f9a7e2d1b4c','-', '1.0.0')))]"
+    },
+    "workbookVersion1": "1.0.0",
+    "workbookContentId1": "CyberintAlertOverview",
+    "workbookId1": "[resourceId('Microsoft.Insights/workbooks', variables('workbookContentId1'))]",
+    "workbookTemplateSpecName1": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/',concat(parameters('workspace'),'-wb-',uniquestring(variables('_workbookContentId1'))))]",
+    "_workbookContentId1": "[variables('workbookContentId1')]",
+    "_workbookcontentProductId1": "[concat(take(variables('_solutionId'),50),'-','wb','-', uniqueString(concat(variables('_solutionId'),'-','Workbook','-',variables('_workbookContentId1'),'-', variables('workbookVersion1'))))]"
   },
   "resources": [
     {
@@ -824,7 +845,7 @@
                   "ApiKeyIdentifier": "access_token="
                 },
                 "request": {
-                  "apiEndpoint": "[[concat('https://', parameters('argosurl'), '/alert/api/v1/alerts')]",
+                  "apiEndpoint": "[[concat(parameters('argosurl'), '/alert/api/v1/alerts')]",
                   "rateLimitQPS": 10,
                   "queryWindowInMin": 5,
                   "httpMethod": "POST",
@@ -863,16 +884,208 @@
       }
     },
     {
+      "type": "Microsoft.OperationalInsights/workspaces/providers/contentTemplates",
+      "apiVersion": "2023-04-01-preview",
+      "name": "[variables('analyticRuleObject1').analyticRuleTemplateSpecName1]",
+      "location": "[parameters('workspace-location')]",
+      "dependsOn": [
+        "[extensionResourceId(resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspace')), 'Microsoft.SecurityInsights/contentPackages', variables('_solutionId'))]"
+      ],
+      "properties": {
+        "description": "CyberintAlertIngestionAnomaly_AnalyticalRules Analytics Rule with template version 3.0.0",
+        "mainTemplate": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "[variables('analyticRuleObject1').analyticRuleVersion1]",
+          "parameters": {},
+          "variables": {},
+          "resources": [
+            {
+              "type": "Microsoft.SecurityInsights/AlertRuleTemplates",
+              "name": "[variables('analyticRuleObject1')._analyticRulecontentId1]",
+              "apiVersion": "2023-02-01-preview",
+              "kind": "Scheduled",
+              "location": "[parameters('workspace-location')]",
+              "properties": {
+                "description": "Detects when no Cyberint Argos alerts have been ingested into the argsentdc_CL table for an extended period. This may indicate a failure in the CCP data connector or the Inbound Sync playbook, a misconfigured API token, or network connectivity issues.",
+                "displayName": "Cyberint Argos - Alert Ingestion Anomaly",
+                "enabled": false,
+                "query": "let lookback = 24h;\nlet expected_interval = 1h;\nlet last_record = toscalar(\n    argsentdc_CL\n    | where TimeGenerated > ago(lookback)\n    | summarize max(TimeGenerated)\n);\nlet gap_minutes = datetime_diff('minute', now(), last_record);\n// Alert if no records in the last expected_interval, but there WERE records in the lookback period\n// (avoids alerting on brand-new deployments with no data yet)\nargsentdc_CL\n| where TimeGenerated > ago(lookback)\n| summarize\n    LastIngestionTime = max(TimeGenerated),\n    TotalRecords = count(),\n    DistinctAlerts = dcount(ref_id)\n| where LastIngestionTime < ago(expected_interval)\n| extend GapMinutes = datetime_diff('minute', now(), LastIngestionTime)\n| project\n    LastIngestionTime,\n    GapMinutes,\n    TotalRecords,\n    DistinctAlerts,\n    Message = strcat(\"No Cyberint Argos alerts ingested for \", GapMinutes, \" minutes. Last record at \", LastIngestionTime)",
+                "queryFrequency": "PT1H",
+                "queryPeriod": "P1D",
+                "severity": "Medium",
+                "suppressionDuration": "PT5H",
+                "suppressionEnabled": false,
+                "triggerOperator": "GreaterThan",
+                "triggerThreshold": 0,
+                "status": "Available",
+                "requiredDataConnectors": [
+                  {
+                    "connectorId": "CyberintArgosAlerts",
+                    "dataTypes": [
+                      "argsentdc_CL"
+                    ]
+                  }
+                ],
+                "tactics": [
+                  "DefenseEvasion"
+                ],
+                "techniques": [
+                  "T1562"
+                ],
+                "entityMappings": [],
+                "incidentConfiguration": {
+                  "createIncident": true,
+                  "groupingConfiguration": {
+                    "enabled": true,
+                    "reopenClosedIncident": false,
+                    "lookbackDuration": "P1D",
+                    "matchingMethod": "AllEntities"
+                  }
+                },
+                "eventGroupingSettings": {
+                  "aggregationKind": "SingleAlert"
+                },
+                "alertDetailsOverride": {
+                  "alertDescriptionFormat": "{{Message}}",
+                  "alertDisplayNameFormat": "Cyberint Argos - Ingestion gap detected ({{GapMinutes}} minutes)"
+                }
+              }
+            },
+            {
+              "type": "Microsoft.OperationalInsights/workspaces/providers/metadata",
+              "apiVersion": "2022-01-01-preview",
+              "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/',concat('AnalyticsRule-', last(split(variables('analyticRuleObject1').analyticRuleId1,'/'))))]",
+              "properties": {
+                "description": "Check Point Cyberint Alerts Analytics Rule 1",
+                "parentId": "[variables('analyticRuleObject1').analyticRuleId1]",
+                "contentId": "[variables('analyticRuleObject1')._analyticRulecontentId1]",
+                "kind": "AnalyticsRule",
+                "version": "[variables('analyticRuleObject1').analyticRuleVersion1]",
+                "source": {
+                  "kind": "Solution",
+                  "name": "[variables('_solutionName')]",
+                  "sourceId": "[variables('_solutionId')]"
+                },
+                "author": {
+                  "name": "Cyberint",
+                  "email": "[variables('_email')]"
+                },
+                "support": {
+                  "name": "Cyberint",
+                  "tier": "Partner",
+                  "link": "https://cyberint.com/customer-support/"
+                }
+              }
+            }
+          ]
+        },
+        "packageKind": "Solution",
+        "packageVersion": "[variables('_solutionVersion')]",
+        "packageName": "[variables('_solutionName')]",
+        "packageId": "[variables('_solutionId')]",
+        "contentSchemaVersion": "3.0.0",
+        "contentId": "[variables('analyticRuleObject1')._analyticRulecontentId1]",
+        "contentKind": "AnalyticsRule",
+        "displayName": "Cyberint Argos - Alert Ingestion Anomaly",
+        "contentProductId": "[variables('analyticRuleObject1')._analyticRulecontentProductId1]",
+        "id": "[variables('analyticRuleObject1')._analyticRulecontentProductId1]",
+        "version": "[variables('analyticRuleObject1').analyticRuleVersion1]"
+      }
+    },
+    {
+      "type": "Microsoft.OperationalInsights/workspaces/providers/contentTemplates",
+      "apiVersion": "2023-04-01-preview",
+      "name": "[variables('workbookTemplateSpecName1')]",
+      "location": "[parameters('workspace-location')]",
+      "dependsOn": [
+        "[extensionResourceId(resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspace')), 'Microsoft.SecurityInsights/contentPackages', variables('_solutionId'))]"
+      ],
+      "properties": {
+        "description": "CyberintAlertOverview Workbook with template version 3.0.0",
+        "mainTemplate": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "[variables('workbookVersion1')]",
+          "parameters": {},
+          "variables": {},
+          "resources": [
+            {
+              "type": "Microsoft.Insights/workbooks",
+              "name": "[variables('workbookContentId1')]",
+              "location": "[parameters('workspace-location')]",
+              "kind": "shared",
+              "apiVersion": "2021-08-01",
+              "metadata": {
+                "description": "Cyberint Argos Alert Overview and Sync Health monitoring workbook"
+              },
+              "properties": {
+                "displayName": "[parameters('workbook1-name')]",
+                "serializedData": "{\"version\":\"Notebook/1.0\",\"items\":[{\"type\":1,\"content\":{\"json\":\"## Cyberint Argos - Alert Overview & Sync Health\\n\\nThis workbook provides visibility into Cyberint Argos alerts ingested via the CCP data connector and Inbound Sync playbook. Use it to monitor alert volume, status distribution, and ingestion health.\"},\"name\":\"header\"},{\"type\":9,\"content\":{\"version\":\"KqlParameterItem/1.0\",\"parameters\":[{\"id\":\"a2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d\",\"version\":\"KqlParameterItem/1.0\",\"name\":\"TimeRange\",\"type\":4,\"isRequired\":true,\"typeSettings\":{\"selectableValues\":[{\"durationMs\":3600000},{\"durationMs\":14400000},{\"durationMs\":43200000},{\"durationMs\":86400000},{\"durationMs\":259200000},{\"durationMs\":604800000},{\"durationMs\":2592000000}],\"allowCustom\":true},\"value\":{\"durationMs\":604800000}}],\"style\":\"pills\",\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\"},\"name\":\"parameters\"},{\"type\":11,\"content\":{\"version\":\"LinkItem/1.0\",\"style\":\"tabs\",\"links\":[{\"id\":\"tab-overview\",\"cellValue\":\"selectedTab\",\"linkTarget\":\"parameter\",\"linkLabel\":\"Overview\",\"subTarget\":\"Overview\",\"style\":\"link\"},{\"id\":\"tab-sync-health\",\"cellValue\":\"selectedTab\",\"linkTarget\":\"parameter\",\"linkLabel\":\"Sync Health\",\"subTarget\":\"SyncHealth\",\"style\":\"link\"},{\"id\":\"tab-alert-details\",\"cellValue\":\"selectedTab\",\"linkTarget\":\"parameter\",\"linkLabel\":\"Alert Details\",\"subTarget\":\"AlertDetails\",\"style\":\"link\"}]},\"name\":\"tabs\"},{\"type\":12,\"content\":{\"version\":\"NotebookGroup/1.0\",\"groupType\":\"editable\",\"items\":[{\"type\":3,\"content\":{\"version\":\"KqlItem/1.0\",\"query\":\"argsentdc_CL\\n| where TimeGenerated {TimeRange}\\n| summarize\\n    TotalAlerts = dcount(ref_id),\\n    OpenAlerts = dcountif(ref_id, status == \\\"open\\\"),\\n    ClosedAlerts = dcountif(ref_id, status == \\\"closed\\\"),\\n    LatestAlert = max(TimeGenerated)\\n| project\\n    ['Total Alerts'] = TotalAlerts,\\n    ['Open'] = OpenAlerts,\\n    ['Closed'] = ClosedAlerts,\\n    ['Latest Ingestion'] = LatestAlert\",\"size\":4,\"timeContext\":{\"durationMs\":0},\"timeContextFromParameter\":\"TimeRange\",\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\",\"visualization\":\"tiles\",\"tileSettings\":{\"showBorder\":true,\"titleContent\":{\"columnMatch\":\"Total Alerts\",\"formatter\":12,\"formatOptions\":{\"palette\":\"auto\"}}}},\"name\":\"summary-tiles\"},{\"type\":3,\"content\":{\"version\":\"KqlItem/1.0\",\"query\":\"argsentdc_CL\\n| where TimeGenerated {TimeRange}\\n| summarize arg_max(TimeGenerated, status) by ref_id\\n| summarize Count = count() by status\\n| order by Count desc\",\"size\":2,\"title\":\"Alert Status Distribution\",\"timeContext\":{\"durationMs\":0},\"timeContextFromParameter\":\"TimeRange\",\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\",\"visualization\":\"piechart\"},\"customWidth\":\"50\",\"name\":\"status-distribution\"},{\"type\":3,\"content\":{\"version\":\"KqlItem/1.0\",\"query\":\"argsentdc_CL\\n| where TimeGenerated {TimeRange}\\n| summarize arg_max(TimeGenerated, severity) by ref_id\\n| summarize Count = count() by severity\\n| order by Count desc\",\"size\":2,\"title\":\"Alert Severity Distribution\",\"timeContext\":{\"durationMs\":0},\"timeContextFromParameter\":\"TimeRange\",\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\",\"visualization\":\"piechart\"},\"customWidth\":\"50\",\"name\":\"severity-distribution\"},{\"type\":3,\"content\":{\"version\":\"KqlItem/1.0\",\"query\":\"argsentdc_CL\\n| where TimeGenerated {TimeRange}\\n| summarize AlertCount = dcount(ref_id) by bin(TimeGenerated, 1h)\\n| order by TimeGenerated asc\",\"size\":0,\"title\":\"Alert Ingestion Over Time\",\"timeContext\":{\"durationMs\":0},\"timeContextFromParameter\":\"TimeRange\",\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\",\"visualization\":\"timechart\",\"chartSettings\":{\"seriesLabelSettings\":[{\"seriesName\":\"AlertCount\",\"label\":\"Distinct Alerts\"}]}},\"name\":\"ingestion-timeline\"},{\"type\":3,\"content\":{\"version\":\"KqlItem/1.0\",\"query\":\"argsentdc_CL\\n| where TimeGenerated {TimeRange}\\n| summarize arg_max(TimeGenerated, category) by ref_id\\n| summarize Count = count() by category\\n| order by Count desc\\n| take 10\",\"size\":2,\"title\":\"Top Alert Categories\",\"timeContext\":{\"durationMs\":0},\"timeContextFromParameter\":\"TimeRange\",\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\",\"visualization\":\"barchart\"},\"name\":\"top-categories\"}]},\"conditionalVisibility\":{\"parameterName\":\"selectedTab\",\"comparison\":\"isEqualTo\",\"value\":\"Overview\"},\"name\":\"overview-group\"},{\"type\":12,\"content\":{\"version\":\"NotebookGroup/1.0\",\"groupType\":\"editable\",\"items\":[{\"type\":3,\"content\":{\"version\":\"KqlItem/1.0\",\"query\":\"argsentdc_CL\\n| where TimeGenerated {TimeRange}\\n| summarize RecordCount = count() by bin(TimeGenerated, 10m)\\n| order by TimeGenerated asc\",\"size\":0,\"title\":\"Ingestion Volume (records per 10-min window)\",\"timeContext\":{\"durationMs\":0},\"timeContextFromParameter\":\"TimeRange\",\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\",\"visualization\":\"timechart\",\"chartSettings\":{\"seriesLabelSettings\":[{\"seriesName\":\"RecordCount\",\"label\":\"Records Ingested\"}]}},\"name\":\"ingestion-volume\"},{\"type\":3,\"content\":{\"version\":\"KqlItem/1.0\",\"query\":\"argsentdc_CL\\n| where TimeGenerated > ago(24h)\\n| summarize RecordCount = count() by bin(TimeGenerated, 10m)\\n| order by TimeGenerated asc\\n| extend PreviousTime = prev(TimeGenerated)\\n| where isnotnull(PreviousTime)\\n| extend GapMinutes = datetime_diff('minute', TimeGenerated, PreviousTime)\\n| where GapMinutes > 15\\n| project GapStart = PreviousTime, GapEnd = TimeGenerated, GapMinutes\\n| order by GapMinutes desc\",\"size\":0,\"title\":\"Ingestion Gaps (>15 minutes, last 24h)\",\"timeContext\":{\"durationMs\":86400000},\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\",\"visualization\":\"table\",\"gridSettings\":{\"formatters\":[{\"columnMatch\":\"GapMinutes\",\"formatter\":8,\"formatOptions\":{\"palette\":\"redGreen\"}}]}},\"name\":\"ingestion-gaps\"},{\"type\":3,\"content\":{\"version\":\"KqlItem/1.0\",\"query\":\"argsentdc_CL\\n| where TimeGenerated {TimeRange}\\n| where isnotempty(modification_date)\\n| extend IngestionDelay = datetime_diff('minute', TimeGenerated, modification_date)\\n| where IngestionDelay >= 0\\n| summarize\\n    AvgDelayMinutes = avg(IngestionDelay),\\n    P50DelayMinutes = percentile(IngestionDelay, 50),\\n    P95DelayMinutes = percentile(IngestionDelay, 95),\\n    MaxDelayMinutes = max(IngestionDelay)\\n| project\\n    ['Avg Delay (min)'] = round(AvgDelayMinutes, 1),\\n    ['P50 Delay (min)'] = round(P50DelayMinutes, 1),\\n    ['P95 Delay (min)'] = round(P95DelayMinutes, 1),\\n    ['Max Delay (min)'] = round(MaxDelayMinutes, 1)\",\"size\":4,\"title\":\"Ingestion Latency (modification_date \\u2192 TimeGenerated)\",\"timeContext\":{\"durationMs\":0},\"timeContextFromParameter\":\"TimeRange\",\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\",\"visualization\":\"tiles\",\"tileSettings\":{\"showBorder\":true}},\"name\":\"ingestion-latency\"},{\"type\":3,\"content\":{\"version\":\"KqlItem/1.0\",\"query\":\"argsentdc_CL\\n| where TimeGenerated {TimeRange}\\n| summarize\\n    NewAlerts = countif(created_date >= ago(1d)),\\n    ModifiedAlerts = countif(modification_date >= ago(1d) and modification_date != created_date),\\n    TotalRecords = count()\\n    by bin(TimeGenerated, 1h)\\n| order by TimeGenerated asc\",\"size\":0,\"title\":\"New vs Modified Alert Records Over Time\",\"timeContext\":{\"durationMs\":0},\"timeContextFromParameter\":\"TimeRange\",\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\",\"visualization\":\"timechart\"},\"name\":\"new-vs-modified\"}]},\"conditionalVisibility\":{\"parameterName\":\"selectedTab\",\"comparison\":\"isEqualTo\",\"value\":\"SyncHealth\"},\"name\":\"sync-health-group\"},{\"type\":12,\"content\":{\"version\":\"NotebookGroup/1.0\",\"groupType\":\"editable\",\"items\":[{\"type\":3,\"content\":{\"version\":\"KqlItem/1.0\",\"query\":\"argsentdc_CL\\n| where TimeGenerated {TimeRange}\\n| summarize arg_max(TimeGenerated, *) by ref_id\\n| project\\n    TimeGenerated,\\n    ref_id,\\n    event_title,\\n    status,\\n    severity,\\n    category,\\n    source,\\n    confidence,\\n    created_date,\\n    modification_date,\\n    threat_actor\\n| order by TimeGenerated desc\\n| take 100\",\"size\":0,\"title\":\"Latest Alerts (deduplicated by ref_id)\",\"timeContext\":{\"durationMs\":0},\"timeContextFromParameter\":\"TimeRange\",\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\",\"visualization\":\"table\",\"gridSettings\":{\"formatters\":[{\"columnMatch\":\"severity\",\"formatter\":18,\"formatOptions\":{\"thresholdsOptions\":\"colors\",\"thresholdsGrid\":[{\"operator\":\"==\",\"thresholdValue\":\"very_high\",\"representation\":\"redBright\",\"text\":\"{0}\"},{\"operator\":\"==\",\"thresholdValue\":\"high\",\"representation\":\"red\",\"text\":\"{0}\"},{\"operator\":\"==\",\"thresholdValue\":\"medium\",\"representation\":\"orange\",\"text\":\"{0}\"},{\"operator\":\"==\",\"thresholdValue\":\"low\",\"representation\":\"green\",\"text\":\"{0}\"},{\"operator\":\"Default\",\"representation\":\"gray\",\"text\":\"{0}\"}]}},{\"columnMatch\":\"status\",\"formatter\":18,\"formatOptions\":{\"thresholdsOptions\":\"colors\",\"thresholdsGrid\":[{\"operator\":\"==\",\"thresholdValue\":\"open\",\"representation\":\"blue\",\"text\":\"{0}\"},{\"operator\":\"==\",\"thresholdValue\":\"closed\",\"representation\":\"gray\",\"text\":\"{0}\"},{\"operator\":\"Default\",\"representation\":\"yellow\",\"text\":\"{0}\"}]}}]}},\"name\":\"alerts-table\"},{\"type\":3,\"content\":{\"version\":\"KqlItem/1.0\",\"query\":\"argsentdc_CL\\n| where TimeGenerated {TimeRange}\\n| summarize arg_max(TimeGenerated, *) by ref_id\\n| where status == \\\"closed\\\" and isnotempty(closure_reason)\\n| summarize Count = count() by tostring(closure_reason)\\n| order by Count desc\",\"size\":2,\"title\":\"Closure Reason Breakdown\",\"timeContext\":{\"durationMs\":0},\"timeContextFromParameter\":\"TimeRange\",\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\",\"visualization\":\"piechart\"},\"customWidth\":\"50\",\"name\":\"closure-reasons\"},{\"type\":3,\"content\":{\"version\":\"KqlItem/1.0\",\"query\":\"argsentdc_CL\\n| where TimeGenerated {TimeRange}\\n| summarize arg_max(TimeGenerated, *) by ref_id\\n| where isnotempty(threat_actor)\\n| summarize AlertCount = dcount(ref_id) by threat_actor\\n| order by AlertCount desc\\n| take 10\",\"size\":2,\"title\":\"Top Threat Actors\",\"timeContext\":{\"durationMs\":0},\"timeContextFromParameter\":\"TimeRange\",\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\",\"visualization\":\"barchart\"},\"customWidth\":\"50\",\"name\":\"threat-actors\"}]},\"conditionalVisibility\":{\"parameterName\":\"selectedTab\",\"comparison\":\"isEqualTo\",\"value\":\"AlertDetails\"},\"name\":\"alert-details-group\"}],\"fallbackResourceIds\":[],\"$schema\":\"https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json\"}",
+                "version": "1.0",
+                "sourceId": "[variables('workspaceResourceId')]",
+                "category": "sentinel"
+              }
+            },
+            {
+              "type": "Microsoft.OperationalInsights/workspaces/providers/metadata",
+              "apiVersion": "2022-01-01-preview",
+              "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/',concat('Workbook-', last(split(variables('workbookId1'),'/'))))]",
+              "properties": {
+                "description": "@{workbookKey=CyberintAlertOverview; logoFileName=checkpoint-cyberint.svg; description=Cyberint Argos Alert Overview and Sync Health monitoring workbook; dataTypesDependencies=Array[System.Object]; dataConnectorsDependencies=Array[System.Object]; previewImagesFileNames=Array[System.Object]; version=1.0.0; title=Cyberint Argos - Alert Overview & Sync Health; templateRelativePath=CyberintAlertOverview.json; subtitle=; provider=Cyberint}.description",
+                "parentId": "[variables('workbookId1')]",
+                "contentId": "[variables('_workbookContentId1')]",
+                "kind": "Workbook",
+                "version": "[variables('workbookVersion1')]",
+                "source": {
+                  "kind": "Solution",
+                  "name": "[variables('_solutionName')]",
+                  "sourceId": "[variables('_solutionId')]"
+                },
+                "author": {
+                  "name": "Cyberint",
+                  "email": "[variables('_email')]"
+                },
+                "support": {
+                  "name": "Cyberint",
+                  "tier": "Partner",
+                  "link": "https://cyberint.com/customer-support/"
+                },
+                "dependencies": {
+                  "operator": "AND",
+                  "criteria": [
+                    {
+                      "contentId": "argsentdc_CL",
+                      "kind": "DataType"
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "packageKind": "Solution",
+        "packageVersion": "[variables('_solutionVersion')]",
+        "packageName": "[variables('_solutionName')]",
+        "packageId": "[variables('_solutionId')]",
+        "contentSchemaVersion": "3.0.0",
+        "contentId": "[variables('_workbookContentId1')]",
+        "contentKind": "Workbook",
+        "displayName": "[parameters('workbook1-name')]",
+        "contentProductId": "[variables('_workbookcontentProductId1')]",
+        "id": "[variables('_workbookcontentProductId1')]",
+        "version": "[variables('workbookVersion1')]"
+      }
+    },
+    {
       "type": "Microsoft.OperationalInsights/workspaces/providers/contentPackages",
       "apiVersion": "2023-04-01-preview",
       "location": "[parameters('workspace-location')]",
       "properties": {
-        "version": "3.0.1",
+        "version": "3.1.0",
         "kind": "Solution",
         "contentSchemaVersion": "3.0.0",
         "displayName": "Check Point Cyberint Alerts",
         "publisherDisplayName": "Cyberint",
-        "descriptionHtml": "<p><strong>Note:</strong> Please refer to the following before installing the solution:</p>\n<p>• Review the solution <a href=\"https://github.com/Azure/Azure-Sentinel/tree/master/Solutions/Check%20Point%20Cyberint%20Alerts/ReleaseNotes.md\">Release Notes</a></p>\n<p>• There may be <a href=\"https://aka.ms/sentinelsolutionsknownissues\">known issues</a> pertaining to this Solution, please refer to them before installing.</p>\n<p>Cyberint, a Check Point company, provides Microsoft Sentinel integration to streamline critical Alerts and bring enriched threat intelligence from the Infinity External Risk Management solution into Microsoft Sentinel. This simplifies the process of tracking the status of tickets with automatic sync updates across systems. Using this new integration for Microsoft Sentinel, existing Cyberint and Microsoft Sentinel customers can easily pull logs based on Cyberint's findings into Microsoft Sentinel platform.<p><span style='color:red; font-weight:bold;'>NOTE</span>: Microsoft recommends installation of Check Point Cyberint Alerts Connector (via Codeless Connector Platform). This connector is build on the Codeless Connector Platform (CCP), which uses the Log Ingestion API, which replaces ingestion via the <a href='https://learn.microsoft.com/en-us/azure/azure-monitor/logs/custom-logs-migrate' style='color:#1890F1;'>deprecated HTTP Data Collector API</a>. CCP-based data connectors also support <a href='https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/data-collection-rule-overview' style='color:#1890F1;'>Data Collection Rules</a> (DCRs) offering transformations and enrichment.</p></p>\n<p><strong>Data Connectors:</strong> 1</p>\n<p><a href=\"https://aka.ms/azuresentinel\">Learn more about Microsoft Sentinel</a> | <a href=\"https://aka.ms/azuresentinelsolutionsdoc\">Learn more about Solutions</a></p>\n",
+        "descriptionHtml": "<p><strong>Note:</strong> Please refer to the following before installing the solution:</p>\n<p>\u2022 Review the solution <a href=\"https://github.com/Azure/Azure-Sentinel/tree/master/Solutions/Check%20Point%20Cyberint%20Alerts/ReleaseNotes.md\">Release Notes</a></p>\n<p>\u2022 There may be <a href=\"https://aka.ms/sentinelsolutionsknownissues\">known issues</a> pertaining to this Solution, please refer to them before installing.</p>\n<p>Cyberint, a Check Point company, provides Microsoft Sentinel integration to streamline critical Alerts and bring enriched threat intelligence from the Infinity External Risk Management solution into Microsoft Sentinel. This simplifies the process of tracking the status of tickets with automatic sync updates across systems. Using this new integration for Microsoft Sentinel, existing Cyberint and Microsoft Sentinel customers can easily pull logs based on Cyberint's findings into Microsoft Sentinel platform.<p><span style='color:red; font-weight:bold;'>NOTE</span>: Microsoft recommends installation of Check Point Cyberint Alerts Connector (via Codeless Connector Platform). This connector is build on the Codeless Connector Platform (CCP), which uses the Log Ingestion API, which replaces ingestion via the <a href='https://learn.microsoft.com/en-us/azure/azure-monitor/logs/custom-logs-migrate' style='color:#1890F1;'>deprecated HTTP Data Collector API</a>. CCP-based data connectors also support <a href='https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/data-collection-rule-overview' style='color:#1890F1;'>Data Collection Rules</a> (DCRs) offering transformations and enrichment.</p></p>\n<p><strong>Data Connectors:</strong> 1, <strong>Workbooks:</strong> 1, <strong>Analytic Rules:</strong> 1</p>\n<p><a href=\"https://aka.ms/azuresentinel\">Learn more about Microsoft Sentinel</a> | <a href=\"https://aka.ms/azuresentinelsolutionsdoc\">Learn more about Solutions</a></p>\n",
         "contentKind": "Solution",
         "contentProductId": "[variables('_solutioncontentProductId')]",
         "id": "[variables('_solutioncontentProductId')]",
@@ -900,6 +1113,16 @@
               "kind": "DataConnector",
               "contentId": "[variables('_dataConnectorContentIdConnections1')]",
               "version": "[variables('dataConnectorCCPVersion')]"
+            },
+            {
+              "kind": "AnalyticsRule",
+              "contentId": "[variables('analyticRuleObject1')._analyticRulecontentId1]",
+              "version": "[variables('analyticRuleObject1').analyticRuleVersion1]"
+            },
+            {
+              "kind": "Workbook",
+              "contentId": "[variables('_workbookContentId1')]",
+              "version": "[variables('workbookVersion1')]"
             }
           ]
         },
